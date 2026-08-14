@@ -962,15 +962,20 @@ export default function App() {
         ? topics[activeTopicIndex] 
         : "";
       const topicHeaderLine = activeTopicText.split("\n")[0] || "";
+      const fallbackTitle = activeDocument?.filename 
+        ? activeDocument.filename.replace(/\.[^/.]+$/, "") 
+        : (activeDocument?.detectedSubject || studentDetails.subject || "Classroom Lesson");
       const cleanHeader = topicHeaderLine.trim() 
         ? (topicHeaderLine.startsWith("#") ? topicHeaderLine : `# ${topicHeaderLine}`) 
-        : `# ${topics[activeTopicIndex] ? "Topic " + (activeTopicIndex + 1) : (studentDetails.subject || "Classroom Lesson")}`;
+        : `# ${topics[activeTopicIndex] ? "Topic " + (activeTopicIndex + 1) : fallbackTitle}`;
       
-      const phase1BoardContent = cleanHeader;
-      console.log(`[Phase 1 Sync Hook] Initializing Phase 1 blackboard notes for Part ${activeTopicIndex + 1}.`);
-      setCustomBoardContent(phase1BoardContent);
+      if (activeTopicText.trim() || activeDocument?.filename) {
+        const phase1BoardContent = cleanHeader;
+        console.log(`[Phase 1 Sync Hook] Initializing Phase 1 blackboard notes for Part ${activeTopicIndex + 1}.`);
+        setCustomBoardContent(phase1BoardContent);
+      }
     }
-  }, [teachingPhase, activeTopicIndex, topics, customBoardContent, studentDetails.subject]);
+  }, [teachingPhase, activeTopicIndex, topics, customBoardContent, studentDetails.subject, activeDocument]);
 
   // Synchronize customBoardContent with topics when transitioning to concept/example/doubt phases so the board displays slide contents immediately if empty
   useEffect(() => {
