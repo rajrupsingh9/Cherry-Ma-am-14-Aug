@@ -106,7 +106,10 @@ const escapeHTML = (text: string): string => {
 const sanitizeTitleForPDF = (title: string, fallbackSubject?: string, topicList?: string[]): string => {
   let firstTopicHeader = "";
   if (topicList && topicList.length > 0) {
-    firstTopicHeader = (topicList[0].split("\n")[0] || "").replace(/[#*_]/g, "").trim();
+    firstTopicHeader = (topicList[0].split("\n")[0] || "")
+      .replace(/[#*_]/g, "")
+      .replace(/\.(md|markdown|txt|pdf|docx|jpg|jpeg|png|webp|gif)\b/gi, "")
+      .trim();
   }
 
   if (!title) {
@@ -116,8 +119,9 @@ const sanitizeTitleForPDF = (title: string, fallbackSubject?: string, topicList?
     return fallbackSubject ? `${fallbackSubject} Classroom Notes` : "Classroom Lecture Notes";
   }
 
-  let clean = title
-    .replace(/\.(md|MD|markdown|txt|pdf|docx|jpg|JPG|jpeg|JPEG|png|PNG|webp|WEBP|gif|GIF)$/i, "")
+  let clean = (title || "").trim()
+    .replace(/\.(md|markdown|txt|pdf|docx|jpg|jpeg|png|webp|gif)$/i, "")
+    .replace(/\.(md|markdown|txt|pdf|docx|jpg|jpeg|png|webp|gif)\b/gi, "")
     .replace(/^["']|["']$/g, "")
     .replace(/[\_]/g, " ")
     .trim();
@@ -191,11 +195,20 @@ const compileWhiteboardToHTML = (markdown: string): string => {
         let trimmedLine = line.trim();
         if (!trimmedLine) return;
 
-        // Convert HEADING: and SUB-HEADING: prefixes to standard headings
-        if (/^(HEADING|TITLE|HEADING 1|HEADING 2)\s*:\s*/i.test(trimmedLine)) {
-          trimmedLine = `### ${trimmedLine.replace(/^(HEADING|TITLE|HEADING 1|HEADING 2)\s*:\s*/i, "").trim()}`;
-        } else if (/^(SUB-HEADING|SUBHEADING|SUB TITLE)\s*:\s*/i.test(trimmedLine)) {
-          trimmedLine = `#### ${trimmedLine.replace(/^(SUB-HEADING|SUBHEADING|SUB TITLE)\s*:\s*/i, "").trim()}`;
+        // Convert HEADING: and SUB-HEADING: prefixes (supporting markdown bold/italic variants) to standard headings
+        const rawCleanPrefix = trimmedLine.replace(/^[*_~`#\s]+/, "");
+        if (/^(HEADING|TITLE|MAIN HEADING|MAIN TITLE|TOPIC|MAIN TOPIC|TOPIC HEADING)\s*(1|2)?\s*:\s*/i.test(rawCleanPrefix)) {
+          const titleContent = rawCleanPrefix
+            .replace(/^(HEADING|TITLE|MAIN HEADING|MAIN TITLE|TOPIC|MAIN TOPIC|TOPIC HEADING)\s*(1|2)?\s*:\s*/i, "")
+            .replace(/[*_~`]+$/, "")
+            .trim();
+          trimmedLine = `### ${titleContent}`;
+        } else if (/^(SUB-HEADING|SUBHEADING|SUB\s*HEADING|SUB-TITLE|SUBTITLE|SUB\s*TITLE|SUB-TOPIC|SUBTOPIC|SUB\s*TOPIC)\s*(1|2)?\s*:\s*/i.test(rawCleanPrefix)) {
+          const subTitleContent = rawCleanPrefix
+            .replace(/^(SUB-HEADING|SUBHEADING|SUB\s*HEADING|SUB-TITLE|SUBTITLE|SUB\s*TITLE|SUB-TOPIC|SUBTOPIC|SUB\s*TOPIC)\s*(1|2)?\s*:\s*/i, "")
+            .replace(/[*_~`]+$/, "")
+            .trim();
+          trimmedLine = `#### ${subTitleContent}`;
         }
 
         // Check if line is a bullet/list item
@@ -226,28 +239,28 @@ const compileWhiteboardToHTML = (markdown: string): string => {
 
         if (isSubHeading) {
           const subHeadingText = parsedLine.replace(/^####\s*/g, "").trim();
-          htmlResult += `<h4 class="subheading-pdf" style="color: #67e8f9; font-size: 12.5px; font-weight: 700; margin-top: 10px; margin-bottom: 6px; font-family: 'Space Grotesk', sans-serif;">🔹 ${subHeadingText}</h4>`;
+          htmlResult += `<h4 class="subheading-pdf" style="color: #67e8f9; font-size: 12.5px; font-weight: 700; margin-top: 12px; margin-bottom: 6px; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.2px;">🔹 ${subHeadingText}</h4>`;
         } else if (isHeading) {
           const headingText = parsedLine.replace(/^📌|^#+\s*/g, "").trim();
           const cleanHeading = headingText.toLowerCase();
           
-          let headingColor = "#fef08a"; // Soft Yellow default for headings
+          let headingColor = "#fbbf24"; // Rich warm gold default for headings
           if (cleanHeading.includes("formula") || cleanHeading.includes("equation") || cleanHeading.includes("math") || cleanHeading.includes("variable")) {
             headingColor = "#bae6fd"; // Pastel sky-blue
           } else if (cleanHeading.includes("tip") || cleanHeading.includes("exam") || cleanHeading.includes("warning")) {
             headingColor = "#fca5a5"; // Pastel pink
           }
           
-          htmlResult += `<h3 class="heading-pdf" style="color: ${headingColor}; border-bottom-color: ${headingColor}30; margin-top: 12px; margin-bottom: 8px;">📌 ${headingText}</h3>`;
+          htmlResult += `<h3 class="heading-pdf" style="color: ${headingColor}; border-bottom: 1px solid ${headingColor}30; font-size: 14px; font-weight: 800; padding-bottom: 3px; margin-top: 14px; margin-bottom: 8px; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.3px;">📌 ${headingText}</h3>`;
         } else if (isDefinition) {
           const colonIdx = parsedLine.indexOf(":");
           const label = parsedLine.substring(0, colonIdx).trim();
           const detail = parsedLine.substring(colonIdx + 1).trim();
           
           const cleanLabel = label.toLowerCase();
-          let borderCol = "#fef08a"; // Default yellow
-          let bgCol = "rgba(254, 240, 138, 0.05)";
-          let txtCol = "#fef08a";
+          let borderCol = "#fbbf24"; // Rich warm gold
+          let bgCol = "rgba(251, 191, 36, 0.08)";
+          let txtCol = "#fbbf24";
           let emoji = "🌟";
           
           if (
@@ -2048,22 +2061,37 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
           }
           
           const cleanNotes = displayNotes ? displayNotes.trim() : "";
-          const notesHTML = compileWhiteboardToHTML(cleanNotes);
+          const hasContent = Boolean(cleanNotes && cleanNotes.length > 0);
 
-          compiledHtml += `
-            <div class="pdf-page-wrapper" style="margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1.5px dashed rgba(255, 255, 255, 0.15); page-break-inside: avoid;">
-              <div class="slide-header" style="display: flex; justify-content: space-between; font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #67e8f9; font-weight: bold; padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08);">
-                <span>📝 TOPIC SECTION ${index + 1}</span>
-                <span>CHERRY LECTURE HANDOUT</span>
+          if (!hasContent) {
+            compiledHtml += `
+              <div class="pdf-page-wrapper empty-topic-compact" style="margin-bottom: 8px; padding: 7px 12px; border-radius: 8px; background-color: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(103, 232, 249, 0.2); display: flex; justify-content: space-between; align-items: center; page-break-inside: avoid;">
+                <span class="empty-topic-title" style="font-family: 'Space Grotesk', sans-serif; font-size: 11px; color: #cbd5e1; font-weight: 700;">
+                  📌 Section ${index + 1}: ${cleanHeader}
+                </span>
+                <span class="empty-topic-badge" style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: #64748b; font-style: italic;">
+                  No lecture notes recorded
+                </span>
               </div>
-              <h2 class="slide-title" style="font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: #ffffff; margin-top: 0; margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
-                📌 ${cleanHeader}
-              </h2>
-              <div class="parsed-latex-topic-content font-chalk text-left" style="background-color: #0b241e; border: 1.5px solid rgba(103, 232, 249, 0.2); color: #f3f4f6; padding: 20px; border-radius: 12px; font-family: 'Inter', sans-serif; font-size: 12.5px; line-height: 1.7; box-shadow: inset 0 2px 6px rgba(0,0,0,0.3);">
-                ${notesHTML}
+            `;
+          } else {
+            const notesHTML = compileWhiteboardToHTML(cleanNotes);
+
+            compiledHtml += `
+              <div class="pdf-page-wrapper" style="margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1.5px dashed rgba(255, 255, 255, 0.15); page-break-inside: avoid;">
+                <div class="slide-header" style="display: flex; justify-content: space-between; font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #67e8f9; font-weight: bold; padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                  <span>📝 TOPIC SECTION ${index + 1}</span>
+                  <span>CHERRY LECTURE HANDOUT</span>
+                </div>
+                <h2 class="slide-title" style="font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: #ffffff; margin-top: 0; margin-bottom: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+                  📌 ${cleanHeader}
+                </h2>
+                <div class="parsed-latex-topic-content font-chalk text-left" style="background-color: #0b241e; border: 1.5px solid rgba(103, 232, 249, 0.2); color: #f3f4f6; padding: 20px; border-radius: 12px; font-family: 'Inter', sans-serif; font-size: 12.5px; line-height: 1.7; box-shadow: inset 0 2px 6px rgba(0,0,0,0.3);">
+                  ${notesHTML}
+                </div>
               </div>
-            </div>
-          `;
+            `;
+          }
         });
       } else {
         // Fallback for single general topic
@@ -2117,13 +2145,13 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               max-width: 860px;
               margin: 0 auto;
               background: #061c18; /* Rich slate dark green board sheet */
-              border: 1.5px solid rgba(196, 245, 0, 0.2);
+              border: 1.5px solid rgba(245, 158, 11, 0.25);
               border-radius: 20px;
               padding: 40px;
               box-shadow: 0 10px 40px rgba(0,0,0,0.4);
             }
             .print-header {
-              border-bottom: 2px solid #c4f500;
+              border-bottom: 2px solid #f59e0b;
               padding-bottom: 16px;
               margin-bottom: 24px;
               display: flex;
@@ -2140,7 +2168,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               text-transform: uppercase;
             }
             .print-subtitle {
-              color: #c4f500;
+              color: #fbbf24;
               font-size: 11px;
               font-weight: 700;
               text-transform: uppercase;
@@ -2152,7 +2180,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               font-weight: 800;
               font-size: 11px;
               color: #061c18;
-              background-color: #c4f500;
+              background-color: #f59e0b;
               padding: 6px 14px;
               border-radius: 8px;
               text-transform: uppercase;
@@ -2162,11 +2190,11 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               display: grid;
               grid-template-columns: repeat(2, 1fr);
               gap: 12px;
-              background-color: rgba(196, 245, 0, 0.05);
+              background-color: rgba(245, 158, 11, 0.05);
               padding: 18px;
               border-radius: 12px;
               margin-bottom: 30px;
-              border: 1px solid rgba(196, 245, 0, 0.1);
+              border: 1px solid rgba(245, 158, 11, 0.15);
             }
             .meta-item {
               display: flex;
@@ -2176,7 +2204,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               font-size: 9px;
               font-family: 'JetBrains Mono', monospace;
               text-transform: uppercase;
-              color: #8fa09d;
+              color: #94a3b8;
               font-weight: 700;
               letter-spacing: 0.5px;
             }
@@ -2192,7 +2220,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               padding: 16px;
               margin: 16px 0;
               overflow-x: auto;
-              border-left: 3.5px solid #c4f500;
+              border-left: 3.5px solid #f59e0b;
               text-align: center;
               box-shadow: inset 0 1px 4px rgba(0,0,0,0.2);
             }
@@ -2200,7 +2228,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               margin: 0;
             }
             .def-pdf-card {
-              border-left: 4px solid #c4f500;
+              border-left: 4px solid #f59e0b;
               background-color: rgba(255,255,255,0.03);
               padding: 12px;
               border-radius: 0 8px 8px 0;
@@ -2211,7 +2239,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               font-weight: 800;
               font-family: 'Space Grotesk', sans-serif;
               font-size: 11px;
-              color: #c4f500;
+              color: #fbbf24;
               text-transform: uppercase;
               letter-spacing: 1px;
               margin-bottom: 2px;
@@ -2223,7 +2251,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
             .heading-pdf {
               font-family: 'Space Grotesk', sans-serif;
               font-size: 13px;
-              color: #c4f500;
+              color: #fbbf24;
               border-bottom: 1px solid rgba(255,255,255,0.1);
               padding-bottom: 4px;
               margin-top: 20px;
@@ -2233,7 +2261,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
             }
             .print-footer {
               margin-top: 40px;
-              border-top: 1px solid rgba(196,245,0,0.15);
+              border-top: 1px solid rgba(245, 158, 11, 0.2);
               padding-top: 16px;
               font-size: 10.5px;
               color: #cbd5e1;
@@ -2244,7 +2272,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
             }
             .action-panel {
               background: #082621;
-              border: 1.5px dashed rgba(196, 245, 0, 0.3);
+              border: 1.5px dashed rgba(245, 158, 11, 0.3);
               border-radius: 12px;
               padding: 16px;
               margin-bottom: 24px;
@@ -2254,7 +2282,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               color: white;
             }
             .action-btn {
-              background-color: #c4f500;
+              background-color: #f59e0b;
               color: #061c18;
               border: none;
               padding: 10px 20px;
@@ -2268,7 +2296,7 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               transition: all 0.2s;
             }
             .action-btn:hover {
-              background-color: #b0dc00;
+              background-color: #d97706;
               transform: translateY(-1px);
             }
             @media print {
@@ -2286,13 +2314,27 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
                 box-shadow: none;
                 background: transparent !important;
               }
+              .print-header {
+                border-bottom: 2px solid #0f766e !important;
+              }
               .print-title {
                 color: #1e293b !important;
+              }
+              .print-subtitle {
+                color: #0f766e !important;
+                font-weight: 800 !important;
               }
               .print-brand {
                 border: 1.5px solid #0f766e !important;
                 background-color: transparent !important;
                 color: #0f766e !important;
+              }
+              .slide-header {
+                color: #0f766e !important;
+                border-bottom-color: #e2e8f0 !important;
+              }
+              .slide-title {
+                color: #0f172a !important;
               }
               .meta-grid {
                 background-color: #f1f5f9 !important;
@@ -2317,6 +2359,11 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               .heading-pdf {
                 color: #0f766e !important;
                 border-bottom-color: #cbd5e1 !important;
+                font-weight: 800 !important;
+              }
+              .subheading-pdf {
+                color: #0369a1 !important;
+                font-weight: 700 !important;
               }
               .def-pdf-card {
                 border-left-color: #0f766e !important;
@@ -2326,6 +2373,20 @@ export const StudentAccountHub: React.FC<StudentAccountHubProps> = ({
               }
               .def-pdf-detail {
                 color: #334155 !important;
+              }
+              .empty-topic-compact {
+                background-color: #f8fafc !important;
+                border-color: #cbd5e1 !important;
+              }
+              .empty-topic-compact .empty-topic-title {
+                color: #475569 !important;
+              }
+              .empty-topic-compact .empty-topic-badge {
+                color: #94a3b8 !important;
+              }
+              .print-footer {
+                border-top-color: #cbd5e1 !important;
+                color: #64748b !important;
               }
               body {
                 -webkit-print-color-adjust: exact !important;

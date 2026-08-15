@@ -36,19 +36,19 @@ const ai = new GoogleGenAI({
   },
 });
 
-// Robust generateContent helper with retry, backoff, and model fallback to handle 503, 429 quota limits, and high demand errors.
+// Robust generateContent helper with retry, backoff, and model fallback to handle 500, 502, 503, 429 quota limits, and high demand errors.
 async function generateContentWithRetry(params: { model: string; contents: any; config?: any }, retries = 5, initialDelay = 1500) {
   let delay = initialDelay;
   const originalModel = params.model;
   
   // Define sequence based on the starting model
-  let modelSequence = [originalModel];
-  if (originalModel === "gemini-3.6-flash" || originalModel === "gemini-3.5-flash") {
-    modelSequence = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+  let modelSequence = ["gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+  if (originalModel === "gemini-3.1-flash-lite") {
+    modelSequence = ["gemini-3.1-flash-lite", "gemini-3.7-flash", "gemini-flash-latest"];
   } else if (originalModel === "gemini-flash-latest") {
-    modelSequence = ["gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-3.6-flash"];
-  } else if (originalModel === "gemini-3.1-flash-lite") {
-    modelSequence = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.6-flash"];
+    modelSequence = ["gemini-flash-latest", "gemini-3.7-flash", "gemini-3.1-flash-lite"];
+  } else if (originalModel && originalModel !== "gemini-3.6-flash" && originalModel !== "gemini-3.5-flash") {
+    modelSequence = [originalModel, "gemini-3.7-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
   }
 
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -72,6 +72,20 @@ async function generateContentWithRetry(params: { model: string; contents: any; 
                                  errString.includes("quota") ||
                                  errString.includes("limit_exceeded");
 
+      const isServerError = errMsg.includes("500") ||
+                            errMsg.includes("502") ||
+                            errMsg.includes("504") ||
+                            errMsg.toLowerCase().includes("internal error") ||
+                            errMsg.toLowerCase().includes("internal") ||
+                            errStatus === 500 ||
+                            errStatus === 502 ||
+                            errStatus === 504 ||
+                            errString.includes("500") ||
+                            errString.includes("internal error") ||
+                            errString.includes("bad gateway") ||
+                            errString.includes("gateway timeout") ||
+                            errString.includes("generation request failed");
+
       const isTransient = errMsg.includes("503") || 
                           errMsg.toLowerCase().includes("unavailable") || 
                           errMsg.toLowerCase().includes("high demand") || 
@@ -92,13 +106,13 @@ async function generateContentWithRetry(params: { model: string; contents: any; 
                              errString.includes("closed") ||
                              errString.includes("socket");
 
-      if ((isTransient || isQuotaOrStatus429 || isNetworkError) && attempt < retries) {
+      if ((isTransient || isServerError || isQuotaOrStatus429 || isNetworkError) && attempt < retries) {
         const nextModelIndex = attempt % modelSequence.length;
         const nextModel = modelSequence[nextModelIndex];
         
         console.warn(
           `[REST Server] API non-fatal issue on model "${params.model}" (Attempt ${attempt}/${retries}, ` +
-          `${isQuotaOrStatus429 ? "quota" : isNetworkError ? "network" : "demand spike"}). ` +
+          `${isQuotaOrStatus429 ? "quota" : isServerError ? "server-internal" : isNetworkError ? "network" : "demand spike"}). ` +
           `Falling back to "${nextModel}" in ${delay}ms...`
         );
         
@@ -379,7 +393,7 @@ app.post("/api/upload-document", async (req, res) => {
     console.log(`[REST Server] Actively extracting syllabus content for: "${filename}"`);
 
     const extractionResponse = await generateContentWithRetry({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.7-flash",
       contents: { parts: extractionPayloadParts },
     });
 
@@ -618,7 +632,7 @@ app.post("/api/generate-quiz", async (req, res) => {
     console.log(`[REST Server] Generating dynamic quiz questions (${chosenDifficulty} level). Source: ${activeTopicText ? "Present Slide Topic" : isFromDocument ? "Active Document" : "Subject Fallback"}`);
 
     const quizResponse = await generateContentWithRetry({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.7-flash",
       contents: { parts: [{ text: prompt }] },
       config: {
         responseMimeType: "application/json",
@@ -740,7 +754,7 @@ Communication Rules:
     console.log(`[REST Server] Processing Kiara Counselor chat for ${studentName || "Student"} (${grade}, ${subject})`);
 
     const aiRes = await generateContentWithRetry({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.7-flash",
       contents,
       config: {
         systemInstruction: systemPrompt,
@@ -914,7 +928,7 @@ CRITICAL RULES FOR ACCURACY & FORMAT:
     console.log(`[REST Server] Processing Homework Maker request for ${nameStr} (${studentGradeStr}, ${studentBoardStr})`);
 
     const aiRes = await generateContentWithRetry({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.7-flash",
       contents,
       config: {
         systemInstruction: systemPrompt,
@@ -1202,7 +1216,7 @@ app.post("/api/parse-youtube", async (req, res) => {
     console.log(`[REST Server] Start processing: Generating YouTube study notes for: "${videoTitle}"`);
 
     const curriculumResponse = await generateContentWithRetry({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.7-flash",
       contents: { parts: [{ text: prompt }] },
     });
 
@@ -1322,7 +1336,7 @@ app.post("/api/generate-revision-deck", async (req, res) => {
       `3. Keep the content deeply educational, structured, and easy to memorize for school exams and competitive test preparation. Ensure all formula representations are clean and syntactically correct in LaTeX.`;
 
     const revisionResponse = await generateContentWithRetry({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.7-flash",
       contents: { parts: [{ text: prompt }] },
       config: {
         responseMimeType: "application/json",
